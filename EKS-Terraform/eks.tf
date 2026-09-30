@@ -708,230 +708,111 @@ resource "aws_instance" "eks" {
   ]
 
  user_data = <<-EOF
-  #!/bin/bash
+#!/bin/bash
 
-  set -euxo pipefail
+set -euxo pipefail
 
-  exec > >(tee /var/log/eks-admin-setup.log | logger -t eks-admin-setup -s 2>/dev/console) 2>&1
+exec > /var/log/eks-admin-setup.log 2>&1
 
-  echo "====================================="
-  echo "Starting EKS Admin EC2 setup"
-  echo "====================================="
+echo "====================================="
+echo "Starting EKS Admin EC2 setup"
+echo "====================================="
 
-  # ----------------------------------
-  # Update OS
-  # ----------------------------------
+# Install required packages
+dnf install -y unzip tar gzip
 
-  yum update -y
+# Verify existing curl
+curl --version
 
-  # ----------------------------------
-  # Install required packages
-  # ----------------------------------
-
-  yum install -y curl unzip tar gzip
-
-  # ----------------------------------
-  # Install AWS CLI
-  # ----------------------------------
-
-  if ! command -v aws >/dev/null 2>&1; then
-
-    echo "Installing AWS CLI..."
-
-    curl -fL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+# Install AWS CLI
+if ! command -v aws >/dev/null 2>&1; then
+    curl -fL \
+      "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
       -o /tmp/awscliv2.zip
 
     unzip -q /tmp/awscliv2.zip -d /tmp
-
     /tmp/aws/install
+fi
 
-  fi
+aws --version
+aws configure set region us-east-1
 
-  echo "AWS CLI:"
-  aws --version
+# Install kubectl
+KUBECTL_VERSION="v1.35.0"
 
-  # ----------------------------------
-  # Configure AWS region
-  # ----------------------------------
+curl -fL \
+  "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+  -o /tmp/kubectl
 
-  aws configure set region us-east-1
+install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+rm -f /tmp/kubectl
 
-  # ----------------------------------
-  # Install kubectl
-  # ----------------------------------
+/usr/local/bin/kubectl version --client
 
-  if ! command -v kubectl >/dev/null 2>&1; then
+# Install eksctl
+curl -fL \
+  "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_linux_amd64.tar.gz" \
+  -o /tmp/eksctl.tar.gz
 
-    echo "Installing kubectl..."
+tar -xzf /tmp/eksctl.tar.gz -C /tmp
+install -m 0755 /tmp/eksctl /usr/local/bin/eksctl
 
-    KUBECTL_VERSION="v1.35.0"
+rm -f /tmp/eksctl.tar.gz /tmp/eksctl
 
-    curl -fL \
-      "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
-      -o /tmp/kubectl
+/usr/local/bin/eksctl version
 
-    chmod 0755 /tmp/kubectl
+# Wait for EKS cluster
+echo "Waiting for EKS cluster..."
 
-    install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
-
-    rm -f /tmp/kubectl
-
-  fi
-
-  # ----------------------------------
-  # Verify kubectl
-  # ----------------------------------
-
-  echo "kubectl location:"
-  command -v kubectl
-
-  echo "kubectl version:"
-  /usr/local/bin/kubectl version --client
-
-  # ----------------------------------
-  # Install eksctl
-  # ----------------------------------
-
-  if ! command -v eksctl >/dev/null 2>&1; then
-
-    echo "Installing eksctl..."
-
-    ARCH=amd64
-    PLATFORM=linux_$${ARCH}
-
-    curl -fL --silent --show-error \
-      "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$${PLATFORM}.tar.gz" \
-      -o /tmp/eksctl.tar.gz
-
-    tar -xzf /tmp/eksctl.tar.gz -C /tmp
-
-    install -m 0755 /tmp/eksctl /usr/local/bin/eksctl
-
-    rm -f /tmp/eksctl.tar.gz
-    rm -f /tmp/eksctl
-
-  fi
-
-  # ----------------------------------
-  # Verify eksctl
-  # ----------------------------------
-
-  echo "eksctl location:"
-  command -v eksctl
-
-  echo "eksctl version:"
-  /usr/local/bin/eksctl version
-
-  # ----------------------------------
-  # Wait for EKS cluster
-  # ----------------------------------
-
-  echo "====================================="
-  echo "Waiting for EKS cluster..."
-  echo "====================================="
-
-  until aws eks describe-cluster \
-    --name naresh \
-    --region us-east-1 >/dev/null 2>&1
-  do
-
-    echo "EKS cluster not ready yet..."
+until aws eks describe-cluster \
+  --name naresh \
+  --region us-east-1 >/dev/null 2>&1
+do
     sleep 20
+done
 
-  done
-
-  echo "EKS cluster is available."
-
-  # ----------------------------------
-  # Wait until cluster is ACTIVE
-  # ----------------------------------
-
-  while true
-  do
-
+# Wait until ACTIVE
+while true; do
     STATUS=$(aws eks describe-cluster \
       --name naresh \
       --region us-east-1 \
       --query 'cluster.status' \
       --output text)
 
-    echo "EKS cluster status: $STATUS"
+    echo "Cluster status: $STATUS"
 
     if [ "$STATUS" = "ACTIVE" ]; then
-      break
+        break
     fi
 
     sleep 20
+done
 
-  done
+# Create kubeconfig
+mkdir -p /root/.kube
 
-  # ----------------------------------
-  # Create kubeconfig
-  # ----------------------------------
+aws eks update-kubeconfig \
+  --name naresh \
+  --region us-east-1 \
+  --kubeconfig /root/.kube/config
 
-  echo "Creating kubeconfig..."
+chmod 600 /root/.kube/config
 
-  mkdir -p /root/.kube
+export KUBECONFIG=/root/.kube/config
 
-  /usr/local/bin/aws eks update-kubeconfig \
-    --name naresh \
-    --region us-east-1 \
-    --kubeconfig /root/.kube/config
+# Wait for Kubernetes nodes
+until /usr/local/bin/kubectl get nodes >/dev/null 2>&1; do
+    echo "Waiting for Kubernetes nodes..."
+    sleep 15
+done
 
-  # ----------------------------------
-  # Set kubeconfig permissions
-  # ----------------------------------
+# Verify
+/usr/local/bin/kubectl get nodes -o wide
+/usr/local/bin/kubectl get pods -A
 
-  chmod 600 /root/.kube/config
-
-  export KUBECONFIG=/root/.kube/config
-
-  # ----------------------------------
-  # Verify kubeconfig
-  # ----------------------------------
-
-  echo "====================================="
-  echo "Kubeconfig:"
-  echo "====================================="
-
-  ls -la /root/.kube/
-
-  echo "====================================="
-  echo "Current Kubernetes context:"
-  echo "====================================="
-
-  /usr/local/bin/kubectl config current-context
-
-  # ----------------------------------
-  # Test EKS connection
-  # ----------------------------------
-
-  echo "====================================="
-  echo "Testing EKS connection"
-  echo "====================================="
-
-  /usr/local/bin/kubectl get nodes
-
-  # ----------------------------------
-  # Show cluster information
-  # ----------------------------------
-
-  echo "====================================="
-  echo "Kubernetes cluster information"
-  echo "====================================="
-
-  /usr/local/bin/kubectl cluster-info
-
-  echo "====================================="
-  echo "EKS Admin EC2 setup completed"
-  echo "====================================="
-
-  echo "Cluster : naresh"
-  echo "Region  : us-east-1"
-  echo "kubectl : $(command -v kubectl)"
-  echo "eksctl  : $(command -v eksctl)"
-
-  echo "====================================="
+echo "====================================="
+echo "EKS Admin setup completed successfully"
+echo "====================================="
 EOF
 }
 
