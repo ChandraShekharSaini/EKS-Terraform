@@ -21,7 +21,7 @@ spec:
       containers:
         - name: backend
 
-          image: 218550331294.dkr.ecr.us-east-1.amazonaws.com/shopping-site-backend:8b7008a1736d8761788a5b339378759314399e23
+          image: 218550331294.dkr.ecr.us-east-1.amazonaws.com/shopping-site-backend:1a9cae219b3cc98f5e75be51fa422321cc316edb
 
           ports:
             - containerPort: 8084
