@@ -1,30 +1,97 @@
-# resource "aws_db_instance" "rds" {
-#   allocated_storage      = 20
-#   identifier = "microservices-rds"
-#   db_subnet_group_name   = aws_db_subnet_group.sub-grp.id
-#   engine                 = "mysql"
-#   engine_version         = "8.4.8"
-#   instance_class         = "db.t3.micro"
-#   multi_az               = true
-#   db_name                = "mydb"
-#   username               = "admin"
-#   password               = "Cloud123"
-#   skip_final_snapshot    = true
-#   vpc_security_group_ids = [aws_security_group.allow_all.id]
-#   depends_on = [ aws_db_subnet_group.sub-grp ]
-#   publicly_accessible = true
-#   backup_retention_period = 7
-#
-#   tags = {
-#     DB_identifier = "book-rds"
-#   }
-# }
+###########################################################
+# RDS SECURITY GROUP
+###########################################################
 
-# resource "aws_db_subnet_group" "sub-grp" {
-#   name       = "main"
-#   subnet_ids = [aws_subnet.private1.id, aws_subnet.private2.id]
-#
-#   tags = {
-#     Name = "My DB subnet group"
-#   }
-# }
+resource "aws_security_group" "rds_sg" {
+  name        = "rds-mysql-sg"
+  description = "Allow MySQL access from EKS"
+  vpc_id      = aws_vpc.eks_vpc.id
+
+  ingress {
+    description = "MySQL from EKS VPC"
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  egress {
+    description = "Allow outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "rds-mysql-sg"
+  }
+}
+
+
+
+###########################################################
+# RDS SUBNET GROUP
+###########################################################
+
+resource "aws_db_subnet_group" "mysql" {
+  name = "shopping-mysql-subnet-group"
+
+  subnet_ids = [
+    aws_subnet.private1.id,
+    aws_subnet.private2.id
+  ]
+
+  tags = {
+    Name = "shopping-mysql-subnet-group"
+  }
+}
+
+
+###########################################################
+# MYSQL RDS
+###########################################################
+
+resource "aws_db_instance" "mysql" {
+
+  identifier = "shopping-mysql"
+
+  engine         = "mysql"
+  engine_version = "8.0"
+
+  instance_class = "db.t3.micro"
+
+  allocated_storage     = 20
+  max_allocated_storage = 50
+  storage_type          = "gp3"
+
+  db_name  = "shopping"
+  username = "admin"
+  password = var.db_password
+
+  port = 3306
+
+  db_subnet_group_name = aws_db_subnet_group.mysql.name
+
+  vpc_security_group_ids = [
+    aws_security_group.rds_sg.id
+  ]
+
+  publicly_accessible = false
+
+  backup_retention_period = 7
+
+  multi_az = false
+
+  storage_encrypted = true
+
+  skip_final_snapshot = true
+
+  deletion_protection = false
+
+  tags = {
+    Name        = "shopping-mysql"
+    Environment = "dev"
+    Project     = "eks-project"
+  }
+}
