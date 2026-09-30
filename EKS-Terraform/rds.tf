@@ -77,7 +77,7 @@ resource "aws_db_instance" "mysql" {
     aws_security_group.rds_sg.id
   ]
 
-  publicly_accessible = false
+  publicly_accessible = true
 
   backup_retention_period = 7
 
