@@ -36,11 +36,10 @@ metadata:
   name: frontend-service
   namespace: project-1
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: frontend
   ports:
     - protocol: TCP
       port: 8501
       targetPort: 8501
-      nodePort: 30001
