@@ -296,43 +296,91 @@ resource "aws_eks_node_group" "node_group" {
 
 
 resource "aws_instance" "eks" {
-    ami           = "ami-02dfbd4ff395f2a1b"
-    instance_type = "t2.medium"
-    subnet_id     = aws_subnet.public1.id
-    vpc_security_group_ids = [aws_security_group.allow_all.id]
-    root_block_device {
-      volume_size = "30"
-    }
-   
-    
-    tags = {
-        Name = "eks"
-    }
-    
-    user_data = <<-EOF
-                #!/bin/bash
-                # Update system
-                yum update -y
+  ami           = "ami-02dfbd4ff395f2a1b"
+  instance_type = "t2.medium"
 
-                # ----------------------------- Install kubectl -----------------------------
-                curl -o /tmp/kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.19.6/2021-01-05/bin/linux/amd64/kubectl
-                chmod +x /tmp/kubectl
-                mv /tmp/kubectl /usr/local/bin/kubectl
+  subnet_id = aws_subnet.public1.id
 
-                # Verify kubectl
-                kubectl version --client || true
+  vpc_security_group_ids = [
+    aws_security_group.allow_all.id
+  ]
 
-                # ----------------------------- Install eksctl -------------------------------
-                curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" \
-                | tar xz -C /tmp
+  root_block_device {
+    volume_size = 30
+  }
 
-                mv /tmp/eksctl /usr/local/bin/eksctl
+  tags = {
+    Name = "eks"
+  }
 
-                # Verify eksctl
-                eksctl version || true
+  user_data = <<-EOF
+    #!/bin/bash
+    set -e
 
-                EOF
-  
+    # ----------------------------------
+    # Update system
+    # ----------------------------------
+    yum update -y
+
+    # ----------------------------------
+    # Install AWS CLI
+    # ----------------------------------
+    yum install -y awscli
+
+    # ----------------------------------
+    # Install kubectl
+    # ----------------------------------
+    curl -Lo /tmp/kubectl \
+      https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl
+
+    chmod +x /tmp/kubectl
+    mv /tmp/kubectl /usr/local/bin/kubectl
+
+    kubectl version --client || true
+
+    # ----------------------------------
+    # Install eksctl
+    # ----------------------------------
+    ARCH=amd64
+    PLATFORM=linux_$ARCH
+
+    curl --silent --location \
+      "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz" \
+      | tar xz -C /tmp
+
+    mv /tmp/eksctl /usr/local/bin/eksctl
+
+    chmod +x /usr/local/bin/eksctl
+
+    eksctl version || true
+
+    # ----------------------------------
+    # Configure AWS region
+    # ----------------------------------
+    aws configure set region us-east-1
+
+    # ----------------------------------
+    # Create EKS kubeconfig
+    # ----------------------------------
+    mkdir -p /root/.kube
+
+    aws eks update-kubeconfig \
+      --name naresh \
+      --region us-east-1 \
+      --kubeconfig /root/.kube/config
+
+    # ----------------------------------
+    # Test connection
+    # ----------------------------------
+    kubectl get nodes || true
+
+    echo "====================================="
+    echo "EKS kubeconfig configured successfully"
+    echo "Cluster: naresh"
+    echo "Region: us-east-1"
+    echo "====================================="
+
+  EOF
 }
 ############################
 # EKS ADDONS
