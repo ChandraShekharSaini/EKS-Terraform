@@ -342,7 +342,7 @@ st.markdown("""
 current_time = datetime.now().strftime("%B %d, %Y")
 st.markdown(f"""
 <div class="hero-header">
-    <h1>🎓 Multicloud Devops by Chandra </h1>
+    <h1>🎓 Multicloud Devops by Chandra Shekhar </h1>
     <p>Advanced Student Management & Cloud Platform</p>
     <div class="hero-subtitle">📅 {current_time} | 🌐 Powered by Spring Boot & Streamlit</div>
 </div>
