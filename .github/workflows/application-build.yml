@@ -1,14 +1,12 @@
-
 name: CI/CD for app
 
 on:
   workflow_dispatch:
 
-  # Uncomment when you want automatic deployment on push
+  # Enable later if you want automatic deployment
   # push:
   #   branches:
   #     - main
-
 
 # ==========================================================
 # GLOBAL ENVIRONMENT VARIABLES
@@ -19,9 +17,9 @@ env:
 
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
 
-  FRONTEND_SERVICES: "main appliances auto beauty books computers earphones electronics fashion food furniture googlegrocery googlemusic googlepay home mobiles sports toys two-wheelers"
+  FRONTEND_REPOSITORY: shopping-site-frontend
 
-  BACKEND_SERVICE: "backend"
+  BACKEND_REPOSITORY: shopping-site-backend
 
 
 # ==========================================================
@@ -45,12 +43,11 @@ jobs:
     steps:
 
       # ====================================================
-      # 1. CHECKOUT REPOSITORY
+      # 1. CHECKOUT
       # ====================================================
 
       - name: 🧾 Checkout repository
         uses: actions/checkout@v4
-
         with:
           token: ${{ secrets.GIT_PAT }}
 
@@ -61,17 +58,14 @@ jobs:
 
       - name: 🔧 Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
-
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
           aws-region: ${{ env.AWS_REGION }}
 
 
       # ====================================================
-      # 3. LOGIN TO AMAZON ECR
+      # 3. LOGIN TO ECR
       # ====================================================
 
       - name: 📦 Login to Amazon ECR
@@ -97,157 +91,29 @@ jobs:
 
 
       # ====================================================
-      # 5. BUILD AND PUSH FRONTEND + BACKEND
+      # 5. BUILD FRONTEND
       # ====================================================
 
-      - name: 🛠 Build and Push Docker Images
+      - name: 🐳 Build and Push Frontend
         run: |
 
           set -e
 
-          echo "======================================"
-          echo "Starting Docker Build and Push"
-          echo "======================================"
-
-          echo "AWS Region: $AWS_REGION"
-          echo "ECR Registry: $ECR_REGISTRY"
-          echo "Image Tag: $IMAGE_TAG"
-
-          # ==================================================
-          # FRONTEND SERVICES
-          # ==================================================
-
-          echo ""
-          echo "======================================"
-          echo "FRONTEND SERVICES"
-          echo "======================================"
-
-          for service in $FRONTEND_SERVICES; do
-
-            FOLDER="frontend/$service"
-
-            REPO_NAME="shopping-site-$service"
-
-            IMAGE_URI="$ECR_REGISTRY/$REPO_NAME:$IMAGE_TAG"
-
-
-            # ----------------------------------------------
-            # Check Dockerfile
-            # ----------------------------------------------
-
-            if [ ! -f "$FOLDER/Dockerfile" ]; then
-
-              echo "⚠️ No Dockerfile found in $FOLDER"
-
-              echo "Skipping $service"
-
-              continue
-
-            fi
-
-
-            echo ""
-            echo "🚀 Building frontend service: $service"
-
-            echo "📁 Folder: $FOLDER"
-
-            echo "📦 ECR Repository: $REPO_NAME"
-
-            echo "🐳 Image: $IMAGE_URI"
-
-
-            # ----------------------------------------------
-            # Create ECR repository if it doesn't exist
-            # ----------------------------------------------
-
-            if ! aws ecr describe-repositories \
-              --repository-names "$REPO_NAME" \
-              --region "$AWS_REGION" \
-              >/dev/null 2>&1
-            then
-
-              echo "📦 Creating ECR repository: $REPO_NAME"
-
-              aws ecr create-repository \
-                --repository-name "$REPO_NAME" \
-                --region "$AWS_REGION" \
-                --image-scanning-configuration scanOnPush=true
-
-            else
-
-              echo "✅ ECR repository already exists: $REPO_NAME"
-
-            fi
-
-
-            # ----------------------------------------------
-            # Docker Build
-            # ----------------------------------------------
-
-            echo "🐳 Building Docker image..."
-
-            docker build \
-              -t "$IMAGE_URI" \
-              "$FOLDER"
-
-
-            # ----------------------------------------------
-            # Docker Push
-            # ----------------------------------------------
-
-            echo "⬆️ Pushing image to ECR..."
-
-            docker push "$IMAGE_URI"
-
-
-            # ----------------------------------------------
-            # Update Kubernetes deployment
-            # ----------------------------------------------
-
-            if [ -f "$FOLDER/deployment.yml" ]; then
-
-              echo "📝 Updating deployment.yml"
-
-              sed -i \
-                "s|image:.*|image: $IMAGE_URI|g" \
-                "$FOLDER/deployment.yml"
-
-            else
-
-              echo "⚠️ deployment.yml not found in $FOLDER"
-
-            fi
-
-          done
-
-
-          # ==================================================
-          # BACKEND
-          # ==================================================
-
-          echo ""
-          echo "======================================"
-          echo "BACKEND"
-          echo "======================================"
-
-          FOLDER="backend"
-
-          REPO_NAME="shopping-site-backend"
+          REPO_NAME="$FRONTEND_REPOSITORY"
 
           IMAGE_URI="$ECR_REGISTRY/$REPO_NAME:$IMAGE_TAG"
 
+          echo "======================================"
+          echo "FRONTEND"
+          echo "======================================"
 
-          echo "🚀 Building backend"
-
-          echo "📁 Folder: $FOLDER"
-
-          echo "📦 ECR Repository: $REPO_NAME"
-
-          echo "🐳 Image: $IMAGE_URI"
+          echo "Folder: frontend"
+          echo "Repository: $REPO_NAME"
+          echo "Image: $IMAGE_URI"
 
 
           # ----------------------------------------------
-          # Create backend ECR repository
+          # Create ECR repository if required
           # ----------------------------------------------
 
           if ! aws ecr describe-repositories \
@@ -256,7 +122,7 @@ jobs:
             >/dev/null 2>&1
           then
 
-            echo "📦 Creating backend ECR repository"
+            echo "📦 Creating ECR repository..."
 
             aws ecr create-repository \
               --repository-name "$REPO_NAME" \
@@ -265,7 +131,77 @@ jobs:
 
           else
 
-            echo "✅ Backend ECR repository already exists"
+            echo "✅ ECR repository already exists"
+
+          fi
+
+
+          # ----------------------------------------------
+          # Build frontend
+          # ----------------------------------------------
+
+          echo "🐳 Building frontend image..."
+
+          docker build \
+            -t "$IMAGE_URI" \
+            ./frontend
+
+
+          # ----------------------------------------------
+          # Push frontend
+          # ----------------------------------------------
+
+          echo "⬆️ Pushing frontend image..."
+
+          docker push "$IMAGE_URI"
+
+          echo "✅ Frontend pushed successfully"
+
+          echo "FRONTEND_IMAGE=$IMAGE_URI" >> $GITHUB_ENV
+
+
+      # ====================================================
+      # 6. BUILD BACKEND
+      # ====================================================
+
+      - name: 🐳 Build and Push Backend
+        run: |
+
+          set -e
+
+          REPO_NAME="$BACKEND_REPOSITORY"
+
+          IMAGE_URI="$ECR_REGISTRY/$REPO_NAME:$IMAGE_TAG"
+
+          echo "======================================"
+          echo "BACKEND"
+          echo "======================================"
+
+          echo "Folder: backend"
+          echo "Repository: $REPO_NAME"
+          echo "Image: $IMAGE_URI"
+
+
+          # ----------------------------------------------
+          # Create ECR repository if required
+          # ----------------------------------------------
+
+          if ! aws ecr describe-repositories \
+            --repository-names "$REPO_NAME" \
+            --region "$AWS_REGION" \
+            >/dev/null 2>&1
+          then
+
+            echo "📦 Creating ECR repository..."
+
+            aws ecr create-repository \
+              --repository-name "$REPO_NAME" \
+              --region "$AWS_REGION" \
+              --image-scanning-configuration scanOnPush=true
+
+          else
+
+            echo "✅ ECR repository already exists"
 
           fi
 
@@ -274,140 +210,184 @@ jobs:
           # Build backend
           # ----------------------------------------------
 
-          echo "🐳 Building backend Docker image..."
+          echo "🐳 Building backend image..."
 
           docker build \
             -t "$IMAGE_URI" \
-            "$FOLDER"
+            ./backend
 
 
           # ----------------------------------------------
           # Push backend
           # ----------------------------------------------
 
-          echo "⬆️ Pushing backend image to ECR..."
+          echo "⬆️ Pushing backend image..."
 
           docker push "$IMAGE_URI"
 
+          echo "✅ Backend pushed successfully"
 
-          # ----------------------------------------------
-          # Update backend Kubernetes YAML
-          # ----------------------------------------------
+          echo "BACKEND_IMAGE=$IMAGE_URI" >> $GITHUB_ENV
 
-          if [ -f "$FOLDER/backend-deployment.yml" ]; then
 
-            echo "📝 Updating backend-deployment.yml"
+      # ====================================================
+      # 7. UPDATE KUBERNETES IMAGE
+      # ====================================================
+
+      - name: 🔄 Update Kubernetes image
+        run: |
+
+          set -e
+
+          echo "======================================"
+          echo "UPDATING KUBERNETES MANIFESTS"
+          echo "======================================"
+
+          echo "Frontend image:"
+          echo "$FRONTEND_IMAGE"
+
+          echo ""
+
+          echo "Backend image:"
+          echo "$BACKEND_IMAGE"
+
+
+          # ==================================================
+          # BACKEND DEPLOYMENT
+          # ==================================================
+
+          if [ -f "backend/deployment.yml" ]; then
+
+            echo "📝 Updating backend/deployment.yml"
 
             sed -i \
-              "s|image:.*|image: $IMAGE_URI|g" \
-              "$FOLDER/backend-deployment.yml"
+              "s|image:.*|image: $BACKEND_IMAGE|g" \
+              backend/deployment.yml
 
           else
 
-            echo "⚠️ backend-deployment.yml not found"
+            echo "⚠️ backend/deployment.yml not found"
+
+          fi
+
+
+          # ==================================================
+          # FRONTEND DEPLOYMENT
+          # ==================================================
+
+          if [ -f "frontend/deployment.yml" ]; then
+
+            echo "📝 Updating frontend/deployment.yml"
+
+            sed -i \
+              "s|image:.*|image: $FRONTEND_IMAGE|g" \
+              frontend/deployment.yml
+
+          else
+
+            echo "⚠️ frontend/deployment.yml not found"
+
+            echo "Frontend deployment may be inside K8-argocd."
 
           fi
 
 
       # ====================================================
-      # 6. SHOW ECR IMAGES
+      # 8. SHOW IMAGES
       # ====================================================
 
-      - name: 📋 Show ECR image URIs
+      - name: 📋 Show ECR images
         run: |
 
           echo ""
           echo "======================================"
-          echo "DOCKER IMAGES PUSHED TO ECR"
+          echo "ECR IMAGES"
           echo "======================================"
 
           echo ""
-
-          echo "Frontend Images:"
-          echo "--------------------------------------"
-
-          for service in $FRONTEND_SERVICES; do
-
-            echo "$ECR_REGISTRY/shopping-site-$service:$IMAGE_TAG"
-
-          done
-
+          echo "Frontend:"
+          echo "$FRONTEND_IMAGE"
 
           echo ""
-
-          echo "Backend Image:"
-          echo "--------------------------------------"
-
-          echo "$ECR_REGISTRY/shopping-site-backend:$IMAGE_TAG"
-
-          echo ""
-
-          echo "======================================"
-          echo "ECR PUSH COMPLETED"
-          echo "======================================"
+          echo "Backend:"
+          echo "$BACKEND_IMAGE"
 
 
       # ====================================================
-      # 7. COMMIT UPDATED KUBERNETES YAML
+      # 9. CHECK GIT CHANGES
       # ====================================================
 
-      - name: 🔄 Commit updated YAML files
+      - name: 🔍 Check Git changes
         run: |
-
-          git config --global user.name "YOUR_GITHUB_USERNAME"
-
-          git config --global user.email "YOUR_GITHUB_EMAIL"
-
-
-          echo "Checking Git changes..."
 
           git status
 
+          echo ""
+          echo "Changed files:"
+          git diff --name-only
 
-          # Add frontend deployments
 
-          git add frontend/**/deployment.yml
+      # ====================================================
+      # 10. COMMIT AND PUSH
+      # ====================================================
+
+      - name: 🔄 Commit updated Kubernetes YAML
+        run: |
+
+          git config user.name "YOUR_GITHUB_USERNAME"
+
+          git config user.email "YOUR_GITHUB_EMAIL"
 
 
           # Add backend deployment
 
-          git add backend/backend-deployment.yml
+          git add backend/deployment.yml
 
 
-          # Commit changes
+          # Add frontend deployment if it exists
+
+          if [ -f "frontend/deployment.yml" ]; then
+            git add frontend/deployment.yml
+          fi
+
+
+          # Add K8-argocd manifests if they contain deployments
+
+          git add K8-argocd/ 2>/dev/null || true
+
+
+          # Commit
 
           git commit \
-            -m "🔄 Update image tags after build [skip ci]" \
+            -m "🔄 Update ECR image tags [skip ci]" \
             || echo "ℹ️ No changes to commit"
 
 
-          # Push changes
+          # Push
 
           git push origin main \
             || echo "ℹ️ Nothing to push"
 
 
       # ====================================================
-      # 8. VERIFY FINAL GIT STATUS
+      # 11. FINAL STATUS
       # ====================================================
 
-      - name: 🔍 Verify Git status
+      - name: 🔍 Final Git status
         run: |
 
           echo "======================================"
-
-          echo "Final Git Status"
-
+          echo "FINAL GIT STATUS"
           echo "======================================"
 
           git status
 
 
       # ====================================================
-      # 9. COMPLETION MESSAGE
+      # 12. COMPLETE
       # ====================================================
 
-      - name: ✅ Deployment pipeline completed
+      - name: ✅ Pipeline completed
         run: |
 
           echo ""
@@ -415,28 +395,20 @@ jobs:
           echo "CI/CD PIPELINE COMPLETED"
           echo "======================================"
 
-          echo "✅ Source code checked out"
+          echo "✅ Frontend Docker image built"
 
-          echo "✅ AWS credentials configured"
+          echo "✅ Frontend image pushed to ECR"
 
-          echo "✅ ECR login successful"
-
-          echo "✅ Frontend images built"
-
-          echo "✅ Frontend images pushed to ECR"
-
-          echo "✅ Backend image built"
+          echo "✅ Backend Docker image built"
 
           echo "✅ Backend image pushed to ECR"
 
-          echo "✅ Kubernetes YAML updated"
+          echo "✅ Kubernetes image updated"
 
-          echo "✅ YAML changes committed"
-
-          echo "✅ YAML changes pushed to GitHub"
+          echo "✅ Git changes pushed"
 
           echo ""
 
-          echo "Argo CD can now detect the Git changes."
+          echo "Argo CD will detect the Git change."
 
           echo "======================================"
