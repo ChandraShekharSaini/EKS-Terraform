@@ -67,7 +67,7 @@ resource "aws_db_instance" "mysql" {
 
   db_name  = "shopping"
   username = "admin"
-  password = qazqaz123
+  password = "qazqaz1231"
 
   port = 3306
 
