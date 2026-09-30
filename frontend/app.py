@@ -342,7 +342,7 @@ st.markdown("""
 current_time = datetime.now().strftime("%B %d, %Y")
 st.markdown(f"""
 <div class="hero-header">
-    <h1>🎓 Multicloud Devops </h1>
+    <h1>🎓 Multicloud Devops by Chandra </h1>
     <p>Advanced Student Management & Cloud Platform</p>
     <div class="hero-subtitle">📅 {current_time} | 🌐 Powered by Spring Boot & Streamlit</div>
 </div>
@@ -848,7 +848,7 @@ st.markdown("""
     </p>
     <p style="color: rgba(255,255,255,0.6); font-size: 14px;">
         Made with ❤️ using Spring Boot & Streamlit | 
-        🚀 MultiCloudDevOps by Veera NareshIT | 
+        🚀 MultiCloudDevOps by Chandra Shekhar| 
         📅 {current_time}
     </p>
     <p style="color: rgba(255,255,255,0.4); font-size: 12px; margin-top: 10px;">
