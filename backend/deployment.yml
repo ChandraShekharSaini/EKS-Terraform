@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: backend
+  namespace: project-1
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: backend
+
+  template:
+    metadata:
+      labels:
+        app: backend
+
+    spec:
+      containers:
+        - name: backend
+
+          image: YOUR_ECR_BACKEND_IMAGE
+
+          ports:
+            - containerPort: 8084
+
+          env:
+            - name: SERVER_PORT
+              value: "8084"
+
+            - name: MYSQL_HOST
+              value: "database-1.cy1cw0c6c4k0.us-east-1.rds.amazonaws.com"
+
+            - name: MYSQL_USERNAME
+              value: "admin"
+
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+
+---
+
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: backend-service
+  namespace: project-1
+
+spec:
+  selector:
+    app: backend
+
+  ports:
+    - protocol: TCP
+      port: 8084
+      targetPort: 8084
+
+  type: ClusterIP
