@@ -1,0 +1,4 @@
+com\datastore\person\DataStoreApplication.class
+com\datastore\person\controller\StudentController.class
+com\datastore\person\pojo\Student.class
+com\datastore\person\repository\StudentRepository.class

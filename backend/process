@@ -1,0 +1,112 @@
+mvn clean package -Dspring.profiles.active=build
+
+move jara file into /root director
+
+MYSQL_HOST=jdbc:database-1.can0ws8oqjny.us-east-1.rds.amazonaws.com:3306/datastore?createDatabaseIfNotExist=true \
+MYSQL_USERNAME=admin \
+MYSQL_PASSWORD=Cloud123 \
+nohup java -jar ./datastore-0.0.7.jar > /var/log/app/nohup.out 2>&1 &
+
+
+####edit the sudo file 
+vi /etc/sudoers
+## add jenkins into sudo file 
+jenkins ALL=(ALL) NOPASSWD: ALL
+
+#### restart the jenkins
+sudo systemctl restart jenkins
+
+
+## sonanr qube webhook
+#path ==adminstration/configuration/webhook
+http://3.84.155.178:8080//sonarqube-webhook/
+
+
+##for sonar token 
+
+path === adminstartion/security/users
+
+
+
+
+
+How Docker builds multi-stage images
+
+Docker builds each stage separately, but only the final stage becomes the actual image unless you explicitly tag other stages.
+
+Stage 1 (builder)
+
+Contains: Maven, JDK, source code, dependencies, fat JAR.
+
+Docker builds it, produces an intermediate image.
+
+This image is not kept unless you tag it.
+
+Stage 2 (runtime)
+
+Based on a lightweight JDK image (e.g., amazoncorretto:11-alpine-jdk).
+
+Only copies the final JAR from the builder stage.
+
+Nothing else from the builder (Maven, source, build cache) is copied.
+
+This is the final image you use/run.
+
+✅ Key point: Docker does not include all previous stages in the final image. Only what you COPY --from=builder into the last stage is included.
+
+2. Visual explanation
+
+Single-stage image:
+
++---------------------------------------------+
+| Maven + JDK + Source + Dependencies + JAR  |
++---------------------------------------------+
+| Final image (~600–700 MB)                  |
++---------------------------------------------+
+
+
+Multi-stage image:
+
+Stage 1 (builder) — Intermediate image
++---------------------------------------------+
+| Maven + JDK + Source + Dependencies + JAR  |
++---------------------------------------------+
+
+Stage 2 (runtime) — Final image
++---------------------------+
+| Lightweight JDK + Fat JAR |
++---------------------------+
+| Final image (~100–200 MB) |
++---------------------------+
+
+
+Stage 1 exists only during build (intermediate image).
+
+Stage 2 is what you tag and push to production.
+
+3. Why image size is reduced
+
+Single-stage: you keep everything inside the image — Maven, source code, build artifacts → big image.
+
+Multi-stage: the final image only contains what you explicitly copy into stage 2 → usually just the fat JAR + JDK.
+
+All intermediate files from the builder (Maven installation, source code, dependency caches) are discarded automatically.
+
+4️.Important notes
+
+You can still tag the builder stage if you want caching or debugging:
+
+docker build --target builder -t myapp-builder .
+
+
+But if you just build and tag the final stage, the builder stage does not contribute to the final image size.
+
+ENV variables, ports, and the JAR are the only things in the final image.
+
+✅ Summary
+
+Multi-stage reduces image size because only the final stage is saved as the image, not the previous builder stage.
+
+Single-stage includes everything: Maven, source code, build cache, etc.
+
+Multi-stage keeps the build process separate, producing a clean, lightweight runtime image.
