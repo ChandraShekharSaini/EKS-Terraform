@@ -19,12 +19,15 @@ variable "cluster_version" {
   default = "1.35"
 }
 
+variable "aws_region" {
+  default = "us-east-1"
+}
+
 ############################
 # VPC
 ############################
 
 resource "aws_vpc" "eks_vpc" {
-
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
@@ -34,213 +37,333 @@ resource "aws_vpc" "eks_vpc" {
   }
 }
 
-resource "aws_internet_gateway" "igw" {
+############################
+# INTERNET GATEWAY
+############################
 
+resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.eks_vpc.id
+
+  tags = {
+    Name = "eks-igw"
+  }
 }
 
 ############################
-# SUBNETS
+# PUBLIC SUBNET 1
 ############################
 
 resource "aws_subnet" "public1" {
-
   vpc_id                  = aws_vpc.eks_vpc.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = "us-east-1a"
   map_public_ip_on_launch = true
+
+  tags = {
+    Name = "eks-public-1"
+
+    "kubernetes.io/role/elb" = "1"
+  }
 }
 
-resource "aws_subnet" "public2" {
+############################
+# PUBLIC SUBNET 2
+############################
 
+resource "aws_subnet" "public2" {
   vpc_id                  = aws_vpc.eks_vpc.id
   cidr_block              = "10.0.2.0/24"
   availability_zone       = "us-east-1b"
   map_public_ip_on_launch = true
+
+  tags = {
+    Name = "eks-public-2"
+
+    "kubernetes.io/role/elb" = "1"
+  }
 }
 
-resource "aws_subnet" "private1" {
+############################
+# PRIVATE SUBNET 1
+############################
 
+resource "aws_subnet" "private1" {
   vpc_id            = aws_vpc.eks_vpc.id
   cidr_block        = "10.0.3.0/24"
   availability_zone = "us-east-1a"
+
+  tags = {
+    Name = "eks-private-1"
+
+    "kubernetes.io/role/internal-elb" = "1"
+  }
 }
 
-resource "aws_subnet" "private2" {
+############################
+# PRIVATE SUBNET 2
+############################
 
+resource "aws_subnet" "private2" {
   vpc_id            = aws_vpc.eks_vpc.id
   cidr_block        = "10.0.4.0/24"
   availability_zone = "us-east-1b"
+
+  tags = {
+    Name = "eks-private-2"
+
+    "kubernetes.io/role/internal-elb" = "1"
+  }
+}
+
+############################
+# NAT ELASTIC IP
+############################
+
+resource "aws_eip" "nat" {
+  domain = "vpc"
+
+  tags = {
+    Name = "eks-nat-eip"
+  }
 }
 
 ############################
 # NAT GATEWAY
 ############################
 
-resource "aws_eip" "nat" {
-  domain = "vpc"
-}
-
 resource "aws_nat_gateway" "nat" {
-
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public1.id
+
+  depends_on = [
+    aws_internet_gateway.igw
+  ]
+
+  tags = {
+    Name = "eks-nat"
+  }
 }
 
 ############################
-# ROUTE TABLES
+# PUBLIC ROUTE TABLE
 ############################
 
 resource "aws_route_table" "public" {
-
   vpc_id = aws_vpc.eks_vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.igw.id
   }
+
+  tags = {
+    Name = "eks-public-rt"
+  }
 }
 
-resource "aws_route_table_association" "pub1" {
+############################
+# PUBLIC ROUTE ASSOCIATION 1
+############################
 
+resource "aws_route_table_association" "pub1" {
   subnet_id      = aws_subnet.public1.id
   route_table_id = aws_route_table.public.id
 }
 
-resource "aws_route_table_association" "pub2" {
+############################
+# PUBLIC ROUTE ASSOCIATION 2
+############################
 
+resource "aws_route_table_association" "pub2" {
   subnet_id      = aws_subnet.public2.id
   route_table_id = aws_route_table.public.id
 }
 
-resource "aws_route_table" "private" {
+############################
+# PRIVATE ROUTE TABLE
+############################
 
+resource "aws_route_table" "private" {
   vpc_id = aws_vpc.eks_vpc.id
 
   route {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.nat.id
   }
+
+  tags = {
+    Name = "eks-private-rt"
+  }
 }
 
-resource "aws_route_table_association" "priv1" {
+############################
+# PRIVATE ROUTE ASSOCIATION 1
+############################
 
+resource "aws_route_table_association" "priv1" {
   subnet_id      = aws_subnet.private1.id
   route_table_id = aws_route_table.private.id
 }
 
-resource "aws_route_table_association" "priv2" {
+############################
+# PRIVATE ROUTE ASSOCIATION 2
+############################
 
+resource "aws_route_table_association" "priv2" {
   subnet_id      = aws_subnet.private2.id
   route_table_id = aws_route_table.private.id
 }
 
-resource "aws_security_group" "allow_all" {
+############################
+# SECURITY GROUP
+############################
 
+resource "aws_security_group" "allow_all" {
   name        = "allow-all-sg"
   description = "Allow all inbound and outbound traffic"
   vpc_id      = aws_vpc.eks_vpc.id
 
   ingress {
-
     description = "Allow all inbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
 
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
+
+    cidr_blocks = [
+      "0.0.0.0/0"
+    ]
   }
 
   egress {
-
     description = "Allow all outbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
 
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
+
+    cidr_blocks = [
+      "0.0.0.0/0"
+    ]
   }
 
   tags = {
     Name = "allow-all-sg"
   }
 }
-############################
-# IAM ROLE - CLUSTER
-############################
+
+###########################################################
+# EKS CLUSTER IAM ROLE
+###########################################################
 
 resource "aws_iam_role" "cluster_role" {
-
   name = "eks-cluster-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "eks.amazonaws.com"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Service = "eks.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
       }
-      Action = "sts:AssumeRole"
-    }]
+    ]
   })
+
+  tags = {
+    Name = "eks-cluster-role"
+  }
 }
 
-resource "aws_iam_role_policy_attachment" "cluster_policy" {
+############################
+# EKS CLUSTER POLICY
+############################
 
-  role       = aws_iam_role.cluster_role.name
+resource "aws_iam_role_policy_attachment" "cluster_policy" {
+  role = aws_iam_role.cluster_role.name
+
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
-############################
-# IAM ROLE - NODE GROUP
-############################
+###########################################################
+# EKS WORKER NODE IAM ROLE
+###########################################################
 
 resource "aws_iam_role" "worker_role" {
-
   name = "eks-worker-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "ec2.amazonaws.com"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
       }
-      Action = "sts:AssumeRole"
-    }]
+    ]
   })
+
+  tags = {
+    Name = "eks-worker-role"
+  }
 }
 
-resource "aws_iam_role_policy_attachment" "worker_node" {
+############################
+# WORKER NODE POLICY
+############################
 
-  role       = aws_iam_role.worker_role.name
+resource "aws_iam_role_policy_attachment" "worker_node" {
+  role = aws_iam_role.worker_role.name
+
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
 }
 
-resource "aws_iam_role_policy_attachment" "cni" {
+############################
+# CNI POLICY
+############################
 
-  role       = aws_iam_role.worker_role.name
+resource "aws_iam_role_policy_attachment" "cni" {
+  role = aws_iam_role.worker_role.name
+
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
-resource "aws_iam_role_policy_attachment" "ecr" {
+############################
+# ECR POLICY
+############################
 
-  role       = aws_iam_role.worker_role.name
+resource "aws_iam_role_policy_attachment" "ecr" {
+  role = aws_iam_role.worker_role.name
+
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
-############################
+###########################################################
 # EKS CLUSTER
-############################
+###########################################################
 
 resource "aws_eks_cluster" "eks" {
+  name = "naresh"
 
-  name     = "naresh"
   role_arn = aws_iam_role.cluster_role.arn
-  version  = var.cluster_version
+
+  version = var.cluster_version
+
+  access_config {
+    authentication_mode = "API_AND_CONFIG_MAP"
+  }
 
   vpc_config {
-
     subnet_ids = [
       aws_subnet.private1.id,
       aws_subnet.private2.id
@@ -252,30 +375,37 @@ resource "aws_eks_cluster" "eks" {
   depends_on = [
     aws_iam_role_policy_attachment.cluster_policy
   ]
+
+  tags = {
+    Name        = "naresh"
+    Environment = "dev"
+    Project     = "eks-project"
+  }
 }
 
-############################
-# NODE GROUP
-############################
+###########################################################
+# EKS NODE GROUP
+###########################################################
 
 resource "aws_eks_node_group" "node_group" {
+  cluster_name = aws_eks_cluster.eks.name
 
-  cluster_name    = aws_eks_cluster.eks.name
   node_group_name = "eks-node-group"
 
   node_role_arn = aws_iam_role.worker_role.arn
-  version       = var.cluster_version
+
+  version = var.cluster_version
 
   subnet_ids = [
     aws_subnet.private1.id,
     aws_subnet.private2.id
   ]
-  
-    
-  instance_types = ["t3.medium"]
+
+  instance_types = [
+    "t3.medium"
+  ]
 
   scaling_config {
-
     desired_size = 4
     max_size     = 6
     min_size     = 1
@@ -286,6 +416,7 @@ resource "aws_eks_node_group" "node_group" {
     aws_iam_role_policy_attachment.cni,
     aws_iam_role_policy_attachment.ecr
   ]
+
   tags = {
     Name        = "eks-node"
     Environment = "dev"
@@ -294,9 +425,266 @@ resource "aws_eks_node_group" "node_group" {
   }
 }
 
+###########################################################
+# EKS ADDON - VPC CNI
+###########################################################
+
+resource "aws_eks_addon" "vpc_cni" {
+  cluster_name = aws_eks_cluster.eks.name
+
+  addon_name = "vpc-cni"
+
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  depends_on = [
+    aws_eks_node_group.node_group
+  ]
+}
+
+###########################################################
+# EKS ADDON - COREDNS
+###########################################################
+
+resource "aws_eks_addon" "coredns" {
+  cluster_name = aws_eks_cluster.eks.name
+
+  addon_name = "coredns"
+
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  depends_on = [
+    aws_eks_node_group.node_group
+  ]
+}
+
+###########################################################
+# EKS ADDON - KUBE PROXY
+###########################################################
+
+resource "aws_eks_addon" "kube_proxy" {
+  cluster_name = aws_eks_cluster.eks.name
+
+  addon_name = "kube-proxy"
+
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  depends_on = [
+    aws_eks_node_group.node_group
+  ]
+}
+
+###########################################################
+# EKS POD IDENTITY AGENT
+###########################################################
+
+resource "aws_eks_addon" "pod_identity" {
+  cluster_name = aws_eks_cluster.eks.name
+
+  addon_name = "eks-pod-identity-agent"
+
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  depends_on = [
+    aws_eks_node_group.node_group
+  ]
+}
+
+###########################################################
+# EBS CSI IAM ROLE
+###########################################################
+
+resource "aws_iam_role" "ebs_csi_role" {
+  name = "AmazonEKS_EBS_CSI_DriverRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Service = "pods.eks.amazonaws.com"
+        }
+
+        Action = [
+          "sts:AssumeRole",
+          "sts:TagSession"
+        ]
+      }
+    ]
+  })
+
+  tags = {
+    Name = "AmazonEKS_EBS_CSI_DriverRole"
+  }
+}
+
+###########################################################
+# EBS CSI POLICY
+###########################################################
+
+resource "aws_iam_role_policy_attachment" "ebs_csi_policy" {
+  role = aws_iam_role.ebs_csi_role.name
+
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+}
+
+###########################################################
+# EBS CSI POD IDENTITY
+###########################################################
+
+resource "aws_eks_pod_identity_association" "ebs_csi" {
+  cluster_name = aws_eks_cluster.eks.name
+
+  namespace = "kube-system"
+
+  service_account = "ebs-csi-controller-sa"
+
+  role_arn = aws_iam_role.ebs_csi_role.arn
+
+  depends_on = [
+    aws_eks_addon.pod_identity,
+    aws_iam_role_policy_attachment.ebs_csi_policy
+  ]
+}
+
+###########################################################
+# EBS CSI DRIVER
+###########################################################
+
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name = aws_eks_cluster.eks.name
+
+  addon_name = "aws-ebs-csi-driver"
+
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  depends_on = [
+    aws_eks_node_group.node_group,
+    aws_eks_pod_identity_association.ebs_csi
+  ]
+}
+
+###########################################################
+# IAM ROLE FOR ADMIN EC2
+###########################################################
+
+resource "aws_iam_role" "eks_admin_role" {
+  name = "eks-admin-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "eks-admin-ec2-role"
+  }
+}
+
+###########################################################
+# EKS ADMIN POLICY
+###########################################################
+
+resource "aws_iam_role_policy_attachment" "eks_admin_policy" {
+  role = aws_iam_role.eks_admin_role.name
+
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+
+###########################################################
+# EKS DESCRIBE POLICY
+###########################################################
+
+resource "aws_iam_role_policy" "eks_describe" {
+  name = "eks-describe"
+
+  role = aws_iam_role.eks_admin_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Action = [
+          "eks:DescribeCluster",
+          "eks:ListClusters",
+          "eks:AccessKubernetesApi"
+        ]
+
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+###########################################################
+# EC2 INSTANCE PROFILE
+###########################################################
+
+resource "aws_iam_instance_profile" "eks_admin_profile" {
+  name = "eks-admin-ec2-profile"
+
+  role = aws_iam_role.eks_admin_role.name
+}
+
+###########################################################
+# EKS ACCESS ENTRY FOR ADMIN EC2
+###########################################################
+
+resource "aws_eks_access_entry" "eks_admin" {
+  cluster_name = aws_eks_cluster.eks.name
+
+  principal_arn = aws_iam_role.eks_admin_role.arn
+
+  type = "STANDARD"
+
+  depends_on = [
+    aws_eks_cluster.eks
+  ]
+}
+
+###########################################################
+# EKS ADMIN ACCESS POLICY
+###########################################################
+
+resource "aws_eks_access_policy_association" "eks_admin" {
+  cluster_name = aws_eks_cluster.eks.name
+
+  principal_arn = aws_iam_role.eks_admin_role.arn
+
+  policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [
+    aws_eks_access_entry.eks_admin
+  ]
+}
+
+###########################################################
+# ADMIN EC2
+###########################################################
 
 resource "aws_instance" "eks" {
-  ami           = "ami-02dfbd4ff395f2a1b"
+  ami = "ami-02dfbd4ff395f2a1b"
+
   instance_type = "t2.medium"
 
   subnet_id = aws_subnet.public1.id
@@ -305,63 +693,132 @@ resource "aws_instance" "eks" {
     aws_security_group.allow_all.id
   ]
 
+  iam_instance_profile = aws_iam_instance_profile.eks_admin_profile.name
+
   root_block_device {
     volume_size = 30
   }
 
   tags = {
-    Name = "eks"
+    Name = "eks-admin"
   }
+
+  depends_on = [
+    aws_eks_access_policy_association.eks_admin
+  ]
 
   user_data = <<-EOF
     #!/bin/bash
+
     set -e
 
+    echo "====================================="
+    echo "Starting EKS Admin EC2 setup"
+    echo "====================================="
+
     # ----------------------------------
-    # Update system
+    # Update OS
     # ----------------------------------
+
     yum update -y
+
+    # ----------------------------------
+    # Install required packages
+    # ----------------------------------
+
+    yum install -y curl unzip tar gzip
 
     # ----------------------------------
     # Install AWS CLI
     # ----------------------------------
-    yum install -y awscli
+
+    if ! command -v aws >/dev/null 2>&1; then
+
+      echo "Installing AWS CLI..."
+
+      curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+        -o /tmp/awscliv2.zip
+
+      unzip -q /tmp/awscliv2.zip -d /tmp
+
+      /tmp/aws/install
+
+    fi
+
+    aws --version
+
+    # ----------------------------------
+    # Configure AWS region
+    # ----------------------------------
+
+    aws configure set region us-east-1
 
     # ----------------------------------
     # Install kubectl
     # ----------------------------------
-    curl -Lo /tmp/kubectl \
-      https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl
 
-    chmod +x /tmp/kubectl
-    mv /tmp/kubectl /usr/local/bin/kubectl
+    if ! command -v kubectl >/dev/null 2>&1; then
+
+      echo "Installing kubectl..."
+
+      curl -Lo /tmp/kubectl \
+        https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl
+
+      chmod +x /tmp/kubectl
+
+      mv /tmp/kubectl /usr/local/bin/kubectl
+
+    fi
 
     kubectl version --client || true
 
     # ----------------------------------
     # Install eksctl
     # ----------------------------------
-    ARCH=amd64
-    PLATFORM=linux_$ARCH
 
-    curl --silent --location \
-      "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz" \
-      | tar xz -C /tmp
+    if ! command -v eksctl >/dev/null 2>&1; then
 
-    mv /tmp/eksctl /usr/local/bin/eksctl
+      echo "Installing eksctl..."
 
-    chmod +x /usr/local/bin/eksctl
+      ARCH=amd64
+
+      PLATFORM=linux_$ARCH
+
+      curl --silent --location \
+        "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz" \
+        | tar xz -C /tmp
+
+      mv /tmp/eksctl /usr/local/bin/eksctl
+
+      chmod +x /usr/local/bin/eksctl
+
+    fi
 
     eksctl version || true
 
     # ----------------------------------
-    # Configure AWS region
+    # Wait for EKS cluster
     # ----------------------------------
-    aws configure set region us-east-1
+
+    echo "Waiting for EKS cluster..."
+
+    until aws eks describe-cluster \
+      --name naresh \
+      --region us-east-1 >/dev/null 2>&1
+    do
+
+      echo "EKS cluster not ready yet..."
+
+      sleep 20
+
+    done
+
+    echo "EKS cluster is available."
 
     # ----------------------------------
-    # Create EKS kubeconfig
+    # Create kubeconfig
     # ----------------------------------
+
     mkdir -p /root/.kube
 
     aws eks update-kubeconfig \
@@ -370,108 +827,58 @@ resource "aws_instance" "eks" {
       --kubeconfig /root/.kube/config
 
     # ----------------------------------
-    # Test connection
+    # Set kubeconfig permissions
     # ----------------------------------
+
+    chmod 600 /root/.kube/config
+
+    # ----------------------------------
+    # Test EKS connection
+    # ----------------------------------
+
+    echo "====================================="
+    echo "Testing EKS connection"
+    echo "====================================="
+
     kubectl get nodes || true
 
     echo "====================================="
-    echo "EKS kubeconfig configured successfully"
-    echo "Cluster: naresh"
-    echo "Region: us-east-1"
+    echo "EKS setup completed"
+    echo "Cluster : naresh"
+    echo "Region  : us-east-1"
     echo "====================================="
 
   EOF
 }
-############################
-# EKS ADDONS
-############################
 
-resource "aws_eks_addon" "vpc_cni" {
+###########################################################
+# OUTPUTS
+###########################################################
 
-  cluster_name = aws_eks_cluster.eks.name
-  addon_name   = "vpc-cni"
-
-  resolve_conflicts_on_update = "OVERWRITE"
-
-  depends_on = [aws_eks_node_group.node_group]
+output "vpc_id" {
+  value = aws_vpc.eks_vpc.id
 }
 
-resource "aws_eks_addon" "coredns" {
-
-  cluster_name = aws_eks_cluster.eks.name
-  addon_name   = "coredns"
-
-  resolve_conflicts_on_update = "OVERWRITE"
-
-  depends_on = [aws_eks_node_group.node_group]
+output "eks_cluster_name" {
+  value = aws_eks_cluster.eks.name
 }
 
-resource "aws_eks_addon" "kube_proxy" {
-
-  cluster_name = aws_eks_cluster.eks.name
-  addon_name   = "kube-proxy"
-
-  resolve_conflicts_on_update = "OVERWRITE"
-
-  depends_on = [aws_eks_node_group.node_group]
+output "eks_cluster_endpoint" {
+  value = aws_eks_cluster.eks.endpoint
 }
 
-resource "aws_eks_addon" "pod_identity" {
-
-  cluster_name = aws_eks_cluster.eks.name
-  addon_name   = "eks-pod-identity-agent"
-
-  resolve_conflicts_on_update = "OVERWRITE"
-
-  depends_on = [aws_eks_node_group.node_group]
+output "eks_admin_ec2_public_ip" {
+  value = aws_instance.eks.public_ip
 }
 
-
-resource "aws_iam_role" "ebs_csi_role" {
-
-  name = "AmazonEKS_EBS_CSI_DriverRole"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "pods.eks.amazonaws.com"
-      }
-      Action = [
-        "sts:AssumeRole",            
-        "sts:TagSession"
-      ]
-    }]
-  })
+output "eks_admin_ec2_private_ip" {
+  value = aws_instance.eks.private_ip
 }
 
-resource "aws_iam_role_policy_attachment" "ebs_csi_policy" {
-
-  role       = aws_iam_role.ebs_csi_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+output "eks_admin_role_arn" {
+  value = aws_iam_role.eks_admin_role.arn
 }
 
-resource "aws_eks_pod_identity_association" "ebs_csi" {
-  cluster_name    = aws_eks_cluster.eks.name
-  namespace       = "kube-system"
-  service_account = "ebs-csi-controller-sa"
-
-  role_arn = aws_iam_role.ebs_csi_role.arn
-
-  depends_on = [
-    aws_iam_role_policy_attachment.ebs_csi_policy
-  ]
-}
-
-resource "aws_eks_addon" "ebs_csi" {
-
-  cluster_name = aws_eks_cluster.eks.name
-  addon_name   = "aws-ebs-csi-driver"
-  resolve_conflicts_on_update = "OVERWRITE"
-
-  depends_on = [
-    aws_eks_node_group.node_group,
-    aws_eks_pod_identity_association.ebs_csi
-  ]
+output "eks_cluster_version" {
+  value = aws_eks_cluster.eks.version
 }
