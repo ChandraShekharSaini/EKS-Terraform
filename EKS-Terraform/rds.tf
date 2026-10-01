@@ -1,95 +1,95 @@
-# ###########################################################
-# # RDS SECURITY GROUP
-# ###########################################################
+###########################################################
+# RDS SECURITY GROUP
+###########################################################
 
-# resource "aws_security_group" "rds_sg" {
-#   name        = "rds-mysql-sg"
-#   description = "Allow MySQL access from EKS"
-#   vpc_id      = aws_vpc.eks_vpc.id
+resource "aws_security_group" "rds_sg" {
+  name        = "rds-mysql-sg"
+  description = "Allow MySQL access from EKS"
+  vpc_id      = aws_vpc.eks_vpc.id
 
-#   ingress {
-#     description = "MySQL from EKS VPC"
-#     from_port   = 3306
-#     to_port     = 3306
-#     protocol    = "tcp"
-#     cidr_blocks = ["10.0.0.0/16"]
-#   }
+  ingress {
+    description = "MySQL from EKS VPC"
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
 
-#   egress {
-#     description = "Allow outbound traffic"
-#     from_port   = 0
-#     to_port     = 0
-#     protocol    = "-1"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
+  egress {
+    description = "Allow outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-#   tags = {
-#     Name = "rds-mysql-sg"
-#   }
-# }
-
-
-
-# ###########################################################
-# # RDS SUBNET GROUP
-# ###########################################################
-
-# resource "aws_db_subnet_group" "mysql" {
-#   name = "shopping-mysql-subnet-group"
-
-#   subnet_ids = [
-#     aws_subnet.private1.id,
-#     aws_subnet.private2.id
-#   ]
-
-#   tags = {
-#     Name = "shopping-mysql-subnet-group"
-#   }
-# }
+  tags = {
+    Name = "rds-mysql-sg"
+  }
+}
 
 
-# ###########################################################
-# # MYSQL RDS
-# ###########################################################
 
-# resource "aws_db_instance" "mysql" {
+###########################################################
+# RDS SUBNET GROUP
+###########################################################
 
-#   identifier = "shopping-mysql"
+resource "aws_db_subnet_group" "mysql" {
+  name = "shopping-mysql-subnet-group"
 
-#   engine         = "mysql"
-#   engine_version = "8.0"
+  subnet_ids = [
+    aws_subnet.private1.id,
+    aws_subnet.private2.id
+  ]
 
-#   instance_class = "db.t3.micro"
+  tags = {
+    Name = "shopping-mysql-subnet-group"
+  }
+}
 
-#   allocated_storage     = 20
-#   max_allocated_storage = 50
-#   storage_type          = "gp3"
 
-#   db_name  = "shopping"
-#   username = "admin"
-#   password = "qazqaz1231"
+###########################################################
+# MYSQL RDS
+###########################################################
 
-#   port = 3306
+resource "aws_db_instance" "mysql" {
 
-#   db_subnet_group_name = aws_db_subnet_group.mysql.name
+  identifier = "shopping-mysql"
 
-#   vpc_security_group_ids = [
-#     aws_security_group.rds_sg.id
-#   ]
+  engine         = "mysql"
+  engine_version = "8.0"
 
-#   publicly_accessible = true
+  instance_class = "db.t3.micro"
 
-#   backup_retention_period = 7
+  allocated_storage     = 20
+  max_allocated_storage = 50
+  storage_type          = "gp3"
 
-#   multi_az = false
+  db_name  = "shopping"
+  username = "admin"
+  password = "qazqaz1231"
 
-#   skip_final_snapshot = true
+  port = 3306
 
-#   deletion_protection = false
+  db_subnet_group_name = aws_db_subnet_group.mysql.name
 
-#   tags = {
-#     Name        = "shopping-mysql"
-#     Environment = "dev"
-#     Project     = "eks-project"
-#   }
-# }
+  vpc_security_group_ids = [
+    aws_security_group.rds_sg.id
+  ]
+
+  publicly_accessible = true
+
+  backup_retention_period = 7
+
+  multi_az = false
+
+  skip_final_snapshot = true
+
+  deletion_protection = false
+
+  tags = {
+    Name        = "shopping-mysql"
+    Environment = "dev"
+    Project     = "eks-project"
+  }
+}
