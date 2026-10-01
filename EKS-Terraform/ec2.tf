@@ -27,7 +27,7 @@ resource "aws_instance" "eks" {
     aws_eks_access_policy_association.eks_admin
   ]
 
- user_data = <<-EOF
+user_data = <<-EOF
 #!/bin/bash
 
 set -euxo pipefail
@@ -38,28 +38,36 @@ echo "====================================="
 echo "Starting EKS Admin EC2 setup"
 echo "====================================="
 
-# Install required packages
-dnf install -y unzip tar gzip
+###########################################################
+# INSTALL REQUIRED PACKAGES
+###########################################################
 
-# Verify existing curl
-curl --version
+dnf install -y unzip tar gzip curl
 
-# Install AWS CLI
+echo "Required packages installed"
+
+###########################################################
+# INSTALL AWS CLI
+###########################################################
+
 if ! command -v aws >/dev/null 2>&1; then
-    curl -fL \
-      "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
-      -o /tmp/awscliv2.zip
 
-    unzip -q /tmp/awscliv2.zip -d /tmp
-    /tmp/aws/install
+  curl -fL \
+    "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+    -o /tmp/awscliv2.zip
+
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+
 fi
 
 aws --version
+
 aws configure set region us-east-1
 
-# =====================================================
-# Install kubectl
-# =====================================================
+###########################################################
+# INSTALL KUBECTL
+###########################################################
 
 KUBECTL_VERSION="v1.35.0"
 
@@ -68,13 +76,14 @@ curl -fL \
   -o /tmp/kubectl
 
 install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+
 rm -f /tmp/kubectl
 
-/usr/local/bin/kubectl version --client
+kubectl version --client
 
-# =====================================================
-# Install eksctl
-# =====================================================
+###########################################################
+# INSTALL EKSCTL
+###########################################################
 
 curl -fL \
   "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_linux_amd64.tar.gz" \
@@ -86,11 +95,29 @@ install -m 0755 /tmp/eksctl /usr/local/bin/eksctl
 
 rm -f /tmp/eksctl.tar.gz /tmp/eksctl
 
-/usr/local/bin/eksctl version
+eksctl version
 
-# =====================================================
-# Wait for EKS cluster
-# =====================================================
+###########################################################
+# INSTALL HELM
+###########################################################
+
+echo "Installing Helm..."
+
+curl -fsSL \
+  https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
+  -o /tmp/get_helm.sh
+
+chmod 700 /tmp/get_helm.sh
+
+/tmp/get_helm.sh
+
+rm -f /tmp/get_helm.sh
+
+helm version
+
+###########################################################
+# WAIT FOR EKS CLUSTER
+###########################################################
 
 echo "Waiting for EKS cluster..."
 
@@ -98,35 +125,35 @@ until aws eks describe-cluster \
   --name naresh \
   --region us-east-1 >/dev/null 2>&1
 do
-    echo "EKS cluster not available yet..."
-    sleep 20
+  echo "EKS cluster not available yet..."
+  sleep 20
 done
 
-# =====================================================
-# Wait until EKS cluster is ACTIVE
-# =====================================================
+###########################################################
+# WAIT UNTIL EKS CLUSTER IS ACTIVE
+###########################################################
 
 while true; do
 
-    STATUS=$(aws eks describe-cluster \
-      --name naresh \
-      --region us-east-1 \
-      --query 'cluster.status' \
-      --output text)
+  STATUS=$(aws eks describe-cluster \
+    --name naresh \
+    --region us-east-1 \
+    --query 'cluster.status' \
+    --output text)
 
-    echo "Cluster status: $STATUS"
+  echo "Cluster status: $STATUS"
 
-    if [ "$STATUS" = "ACTIVE" ]; then
-        break
-    fi
+  if [ "$STATUS" = "ACTIVE" ]; then
+    break
+  fi
 
-    sleep 20
+  sleep 20
 
 done
 
-# =====================================================
-# Create kubeconfig
-# =====================================================
+###########################################################
+# CREATE KUBECONFIG
+###########################################################
 
 mkdir -p /root/.kube
 
@@ -139,181 +166,75 @@ chmod 600 /root/.kube/config
 
 export KUBECONFIG=/root/.kube/config
 
-# =====================================================
-# Wait for Kubernetes nodes
-# =====================================================
+###########################################################
+# WAIT FOR KUBERNETES NODES
+###########################################################
 
-echo "Waiting for Kubernetes nodes..."
-
-until /usr/local/bin/kubectl get nodes >/dev/null 2>&1; do
-
-    echo "Waiting for Kubernetes API/nodes..."
-    sleep 15
-
+until kubectl get nodes >/dev/null 2>&1
+do
+  echo "Waiting for Kubernetes nodes..."
+  sleep 15
 done
 
-# Wait until at least one node becomes Ready
+kubectl get nodes -o wide
 
-until /usr/local/bin/kubectl get nodes \
-    --no-headers 2>/dev/null | grep -q " Ready "; do
+###########################################################
+# CREATE ARGO CD NAMESPACE
+###########################################################
 
-    echo "Waiting for Ready Kubernetes node..."
-    sleep 15
+echo "Creating Argo CD namespace..."
 
-done
+kubectl create namespace argocd \
+  --dry-run=client \
+  -o yaml | kubectl apply -f -
 
-echo "Kubernetes nodes are Ready"
+###########################################################
+# ADD ARGO CD HELM REPOSITORY
+###########################################################
 
-# =====================================================
-# Verify cluster
-# =====================================================
+echo "Adding Argo CD Helm repository..."
 
-/usr/local/bin/kubectl get nodes -o wide
+helm repo add argo https://argoproj.github.io/argo-helm
 
-/usr/local/bin/kubectl get pods -A
+helm repo update
 
-# =====================================================
+###########################################################
 # INSTALL ARGO CD
-# =====================================================
+###########################################################
+
+echo "Installing Argo CD..."
+
+helm upgrade --install argocd argo/argo-cd \
+  --namespace argocd \
+  --set server.service.type=LoadBalancer
+
+###########################################################
+# WAIT FOR ARGO CD PODS
+###########################################################
+
+echo "Waiting for Argo CD pods..."
+
+kubectl wait \
+  --namespace argocd \
+  --for=condition=Ready \
+  pod \
+  --all \
+  --timeout=600s || true
+
+###########################################################
+# SHOW ARGO CD RESOURCES
+###########################################################
 
 echo "====================================="
-echo "Installing Argo CD"
+echo "Argo CD resources"
 echo "====================================="
 
-# Create namespace
+kubectl get pods -n argocd
 
-if ! /usr/local/bin/kubectl get namespace argocd >/dev/null 2>&1; then
-
-    /usr/local/bin/kubectl create namespace argocd
-
-fi
-
-# Install Argo CD
-
-/usr/local/bin/kubectl apply \
-  -n argocd \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-echo "Waiting for Argo CD components..."
-
-# Wait for Argo CD server deployment
-
-/usr/local/bin/kubectl rollout status \
-  deployment/argocd-server \
-  -n argocd \
-  --timeout=10m
-
-# =====================================================
-# CHANGE ARGO CD SERVER TO LOADBALANCER
-# =====================================================
+kubectl get svc -n argocd
 
 echo "====================================="
-echo "Changing Argo CD Service to LoadBalancer"
-echo "====================================="
-
-/usr/local/bin/kubectl patch svc argocd-server \
-  -n argocd \
-  -p '{"spec":{"type":"LoadBalancer"}}'
-
-# =====================================================
-# Wait for AWS Load Balancer
-# =====================================================
-
-echo "Waiting for AWS Load Balancer..."
-
-for i in $(seq 1 60); do
-
-    ARGOCD_LB=$(
-      /usr/local/bin/kubectl get svc argocd-server \
-        -n argocd \
-        -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' \
-        2>/dev/null || true
-    )
-
-    if [ -n "$ARGOCD_LB" ]; then
-        break
-    fi
-
-    echo "Load Balancer not ready yet..."
-    sleep 15
-
-done
-
-# =====================================================
-# Display Argo CD information
-# =====================================================
-
-echo "====================================="
-echo "ARGO CD INSTALLATION COMPLETED"
-echo "====================================="
-
-echo "Argo CD Services:"
-/usr/local/bin/kubectl get svc -n argocd
-
-echo "Argo CD Pods:"
-/usr/local/bin/kubectl get pods -n argocd
-
-echo "Argo CD Load Balancer:"
-echo "$ARGOCD_LB"
-
-echo "====================================="
-echo "Argo CD URL"
-echo "====================================="
-
-if [ -n "$ARGOCD_LB" ]; then
-    echo "https://$ARGOCD_LB"
-else
-    echo "Load Balancer hostname not available yet."
-    echo "Run:"
-    echo "kubectl get svc argocd-server -n argocd"
-fi
-
-# =====================================================
-# Get Initial Argo CD Admin Password
-# =====================================================
-
-echo "====================================="
-echo "Argo CD Initial Admin Password"
-echo "====================================="
-
-for i in $(seq 1 30); do
-
-    if /usr/local/bin/kubectl get secret argocd-initial-admin-secret \
-        -n argocd >/dev/null 2>&1; then
-
-        ARGOCD_PASSWORD=$(
-          /usr/local/bin/kubectl -n argocd get secret \
-            argocd-initial-admin-secret \
-            -o jsonpath="{.data.password}" | base64 -d
-        )
-
-        echo "Username: admin"
-        echo "Password: $ARGOCD_PASSWORD"
-
-        break
-    fi
-
-    echo "Waiting for Argo CD admin secret..."
-    sleep 10
-
-done
-
-# =====================================================
-# Final verification
-# =====================================================
-
-echo "====================================="
-echo "FINAL CLUSTER STATUS"
-echo "====================================="
-
-/usr/local/bin/kubectl get nodes
-
-/usr/local/bin/kubectl get pods -n argocd
-
-/usr/local/bin/kubectl get svc -n argocd
-
-echo "====================================="
-echo "EKS Admin setup completed successfully"
+echo "EKS Admin setup completed"
 echo "====================================="
 
 EOF
