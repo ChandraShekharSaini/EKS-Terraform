@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
 
   # Enable later if you want automatic deployment
-  push:
-    branches:
-      - main
+  # push:
+  #   branches:
+  #     - main
 
 # ==========================================================
 # GLOBAL ENVIRONMENT VARIABLES
