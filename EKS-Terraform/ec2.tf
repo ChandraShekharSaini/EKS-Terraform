@@ -38,37 +38,26 @@ echo "====================================="
 echo "Starting EKS Admin EC2 setup"
 echo "====================================="
 
-###########################################################
-# INSTALL REQUIRED PACKAGES
-###########################################################
+# Install required packages
+dnf install -y unzip tar gzip
 
-dnf install -y unzip tar gzip curl
+# Verify existing curl
+curl --version
 
-echo "Required packages installed"
-
-###########################################################
-# INSTALL AWS CLI
-###########################################################
-
+# Install AWS CLI
 if ! command -v aws >/dev/null 2>&1; then
+    curl -fL \
+      "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+      -o /tmp/awscliv2.zip
 
-  curl -fL \
-    "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
-    -o /tmp/awscliv2.zip
-
-  unzip -q /tmp/awscliv2.zip -d /tmp
-  /tmp/aws/install
-
+    unzip -q /tmp/awscliv2.zip -d /tmp
+    /tmp/aws/install
 fi
 
 aws --version
-
 aws configure set region us-east-1
 
-###########################################################
-# INSTALL KUBECTL
-###########################################################
-
+# Install kubectl
 KUBECTL_VERSION="v1.35.0"
 
 curl -fL \
@@ -76,15 +65,11 @@ curl -fL \
   -o /tmp/kubectl
 
 install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
-
 rm -f /tmp/kubectl
 
-kubectl version --client
+/usr/local/bin/kubectl version --client
 
-###########################################################
-# INSTALL EKSCTL
-###########################################################
-
+# Install eksctl
 curl -fL \
   "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_linux_amd64.tar.gz" \
   -o /tmp/eksctl.tar.gz
@@ -95,66 +80,38 @@ install -m 0755 /tmp/eksctl /usr/local/bin/eksctl
 
 rm -f /tmp/eksctl.tar.gz /tmp/eksctl
 
-eksctl version
+/usr/local/bin/eksctl version
 
-###########################################################
-# INSTALL HELM
-###########################################################
-
-echo "Installing Helm..."
-
-curl -fsSL \
-  https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 \
-  -o /tmp/get_helm.sh
-
-chmod 700 /tmp/get_helm.sh
-
-/tmp/get_helm.sh
-
-rm -f /tmp/get_helm.sh
-
-helm version
-
-###########################################################
-# WAIT FOR EKS CLUSTER
-###########################################################
-
+# Wait for EKS cluster
 echo "Waiting for EKS cluster..."
 
 until aws eks describe-cluster \
   --name naresh \
   --region us-east-1 >/dev/null 2>&1
 do
-  echo "EKS cluster not available yet..."
-  sleep 20
+    sleep 20
 done
 
-###########################################################
-# WAIT UNTIL EKS CLUSTER IS ACTIVE
-###########################################################
-
+# Wait until ACTIVE
 while true; do
 
-  STATUS=$(aws eks describe-cluster \
-    --name naresh \
-    --region us-east-1 \
-    --query 'cluster.status' \
-    --output text)
+    STATUS=$(aws eks describe-cluster \
+      --name naresh \
+      --region us-east-1 \
+      --query 'cluster.status' \
+      --output text)
 
-  echo "Cluster status: $STATUS"
+    echo "Cluster status: $STATUS"
 
-  if [ "$STATUS" = "ACTIVE" ]; then
-    break
-  fi
+    if [ "$STATUS" = "ACTIVE" ]; then
+        break
+    fi
 
-  sleep 20
+    sleep 20
 
 done
 
-###########################################################
-# CREATE KUBECONFIG
-###########################################################
-
+# Create kubeconfig
 mkdir -p /root/.kube
 
 aws eks update-kubeconfig \
@@ -166,76 +123,25 @@ chmod 600 /root/.kube/config
 
 export KUBECONFIG=/root/.kube/config
 
-###########################################################
-# WAIT FOR KUBERNETES NODES
-###########################################################
+# Wait for Kubernetes nodes
+until /usr/local/bin/kubectl get nodes >/dev/null 2>&1; do
 
-until kubectl get nodes >/dev/null 2>&1
-do
-  echo "Waiting for Kubernetes nodes..."
-  sleep 15
+    echo "Waiting for Kubernetes nodes..."
+
+    sleep 15
+
 done
 
-kubectl get nodes -o wide
+# Verify
+/usr/local/bin/kubectl get nodes -o wide
 
-###########################################################
-# CREATE ARGO CD NAMESPACE
-###########################################################
-
-echo "Creating Argo CD namespace..."
-
-kubectl create namespace argocd \
-  --dry-run=client \
-  -o yaml | kubectl apply -f -
-
-###########################################################
-# ADD ARGO CD HELM REPOSITORY
-###########################################################
-
-echo "Adding Argo CD Helm repository..."
-
-helm repo add argo https://argoproj.github.io/argo-helm
-
-helm repo update
-
-###########################################################
-# INSTALL ARGO CD
-###########################################################
-
-echo "Installing Argo CD..."
-
-helm upgrade --install argocd argo/argo-cd \
-  --namespace argocd \
-  --set server.service.type=LoadBalancer
-
-###########################################################
-# WAIT FOR ARGO CD PODS
-###########################################################
-
-echo "Waiting for Argo CD pods..."
-
-kubectl wait \
-  --namespace argocd \
-  --for=condition=Ready \
-  pod \
-  --all \
-  --timeout=600s || true
-
-###########################################################
-# SHOW ARGO CD RESOURCES
-###########################################################
+/usr/local/bin/kubectl get pods -A
 
 echo "====================================="
-echo "Argo CD resources"
-echo "====================================="
-
-kubectl get pods -n argocd
-
-kubectl get svc -n argocd
-
-echo "====================================="
-echo "EKS Admin setup completed"
+echo "EKS Admin setup completed successfully"
 echo "====================================="
 
 EOF
+
+
 }
