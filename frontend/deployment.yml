@@ -4,7 +4,7 @@ metadata:
   name: frontend
   namespace: project-1
 spec:
-  replicas: 2
+  replicas: 20
 
   selector:
     matchLabels:
