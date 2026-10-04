@@ -31,7 +31,7 @@ spec:
               value: "8084"
 
             - name: MYSQL_HOST
-              value: "shopping-mysql.cfkxgx2dzjj7.us-east-1.rds.amazonaws.com"
+              value: "shopping-mysql.cuz0cwouweuo.us-east-1.rds.amazonaws.com"
 
             - name: MYSQL_USERNAME
               value: "admin"
