@@ -30,6 +30,12 @@ The infrastructure is provisioned using Terraform, Docker images are built and p
 - Centralize logs for searching and troubleshooting.
 - Understand the integration of DevOps tools in a cloud-native environment.
 
+  ## 🏗️ Architecture
+
+![End-to-End DevOps Architecture](images/architecture.png)
+
+> **Note:** The diagram represents the intended end-to-end workflow. Adjust the repository update step to match your actual GitHub Actions implementation.
+
 ## 🛠️ Technology Stack
 
 | Technology | Purpose |
@@ -50,30 +56,7 @@ The infrastructure is provisioned using Terraform, Docker images are built and p
 | Fluentd | Log collection and forwarding |
 | Kibana | Log search and visualization |
 
-## 🏗️ Architecture
 
-```mermaid
-flowchart TD
-    A[Developer] --> B[GitHub Application Repository]
-    B --> C[GitHub Actions CI Pipeline]
-    C --> D[Build Spring Boot Application]
-    D --> E[Build Docker Image]
-    E --> F[Amazon ECR]
-    C --> G[Update Kubernetes Manifest Repository]
-    G --> H[Argo CD]
-    H --> I[Amazon EKS]
-    F --> I
-    I --> J[Spring Boot Pods]
-    K[Terraform] --> L[AWS Infrastructure]
-    L --> I
-    I --> M[Prometheus]
-    M --> N[Grafana Dashboards]
-    I --> O[Fluentd]
-    O --> P[Elasticsearch]
-    P --> Q[Kibana]
-```
-
-> **Note:** The diagram represents the intended end-to-end workflow. Adjust the repository update step to match your actual GitHub Actions implementation.
 
 ## 🔄 Project Workflow
 
