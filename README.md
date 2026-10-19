@@ -17,7 +17,7 @@ This project demonstrates an end-to-end DevOps workflow for deploying a Java Spr
 
 It integrates Infrastructure as Code (IaC), containerization, automated CI/CD, GitOps-based continuous delivery, metrics monitoring, and centralized log management to demonstrate how modern cloud-native applications can be deployed and operated on AWS.
 
-The infrastructure is provisioned using Terraform, Docker images are built and published to Amazon ECR through GitHub Actions, and Argo CD synchronizes Kubernetes resources from a Git repository. Prometheus, Grafana, and the EFK stack provide observability and troubleshooting capabilities.
+The infrastructure is provisioned using Terraform, Docker images are built and published to AWS ECR through GitHub Actions, and Argo CD synchronizes Kubernetes resources from a Git repository. Prometheus, Grafana, and the EFK stack provide observability and troubleshooting capabilities.
 
 ## 🎯 Project Objectives
 
